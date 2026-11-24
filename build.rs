@@ -44,18 +44,13 @@ fn build_test_helper() {
 }
 
 fn main() {
-    // Get the package version from Cargo.toml through environment variables
+    // Get the package version from Cargo.toml through environment variables, and its numeric
+    // components without a pre-release suffix such as -unbroken.1, which the resource compiler can't
+    // take
     let version = env::var("CARGO_PKG_VERSION").expect("Failed to get package version");
-    
-    // Parse the version components
-    let version_parts: Vec<&str> = version.split('.').collect();
-    if version_parts.len() < 3 {
-        panic!("Version format must be 'major.minor.patch'");
-    }
-    
-    let major = version_parts[0];
-    let minor = version_parts[1];
-    let patch = version_parts[2];
+    let major = env::var("CARGO_PKG_VERSION_MAJOR").expect("Failed to get package version");
+    let minor = env::var("CARGO_PKG_VERSION_MINOR").expect("Failed to get package version");
+    let patch = env::var("CARGO_PKG_VERSION_PATCH").expect("Failed to get package version");
     
     // Get the current git commit hash
     let commit_hash = Command::new("git")
@@ -80,9 +75,9 @@ fn main() {
     
     // Replace version placeholders
     let updated_content = template_content
-        .replace("{{VERSION_MAJOR}}", major)
-        .replace("{{VERSION_MINOR}}", minor)
-        .replace("{{VERSION_PATCH}}", patch)
+        .replace("{{VERSION_MAJOR}}", &major)
+        .replace("{{VERSION_MINOR}}", &minor)
+        .replace("{{VERSION_PATCH}}", &patch)
         .replace("{{VERSION_STRING}}", &version)
         .replace("{{COMMIT}}", &commit_hash);
     
