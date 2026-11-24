@@ -1,0 +1,79 @@
+name: Build
+
+# Builds and tests inno_updater.exe, and publishes a release for a tag. To integrate a release into
+# Unbroken Code, extract its archive to build/win32, as for Microsoft's releases in VS Code.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    env:
+      TARGET: i686-pc-windows-msvc
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --target $env:TARGET
+          rustup default stable
+
+      - name: Test
+        run: cargo test --locked --target $env:TARGET
+
+      - name: Build
+        run: cargo build --locked --release --target $env:TARGET
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "target/$env:TARGET/release/inno_updater.exe", Cargo.toml, Cargo.lock dist
+          Compress-Archive -Path dist/* -DestinationPath inno_updater.zip -Force
+          foreach ($file in 'dist/inno_updater.exe', 'inno_updater.zip') {
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+            Set-Content -NoNewline -Path "$file.sha256" -Value $hash
+            Write-Output "$file $hash"
+          }
+
+      - name: Upload
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: inno_updater
+          path: |
+            dist/inno_updater.exe
+            dist/inno_updater.exe.sha256
+            inno_updater.zip
+            inno_updater.zip.sha256
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: inno_updater
+          path: release
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "inno_updater.exe built from $GITHUB_SHA." \
+            release/dist/inno_updater.exe release/dist/inno_updater.exe.sha256 release/inno_updater.zip release/inno_updater.zip.sha256
