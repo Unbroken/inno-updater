@@ -171,22 +171,27 @@ fn delete_existing_version(
 
 	info!(log, "Collected all directories and file handles");
 
-	for (index, file_handle) in file_handles.iter().enumerate() {
-		if let Err(err) = util::retry(
-			"marking a file for deletion",
-			|_| -> Result<(), Box<dyn error::Error>> { file_handle.mark_for_deletion() },
-			None,
-		) {
-			// Keep the installation as it was: the files marked so far would be deleted when their
-			// handles close, as they do when the updater exits
-			for marked in file_handles.iter().take(index) {
-				if let Err(unmark_err) = marked.unmark_for_deletion() {
-					warn!(log, "Failed to keep a file that was marked for deletion: {}", unmark_err);
+	// All files or none: an attempt that fails keeps the files it marked, which would otherwise be
+	// deleted when their handles close, as they do when the updater exits, so that nothing is marked
+	// while the updater asks whether to try again, and a failed update leaves the installation as
+	// it was
+	util::retry(
+		"marking a file for deletion",
+		|_| -> Result<(), Box<dyn error::Error>> {
+			for (index, file_handle) in file_handles.iter().enumerate() {
+				if let Err(err) = file_handle.mark_for_deletion() {
+					for marked in file_handles.iter().take(index) {
+						if let Err(unmark_err) = marked.unmark_for_deletion() {
+							warn!(log, "Failed to keep a file that was marked for deletion: {}", unmark_err);
+						}
+					}
+					return Err(err);
 				}
 			}
-			return Err(err);
-		}
-	}
+			Ok(())
+		},
+		None,
+	)?;
 
 	info!(log, "All file handles marked for deletion");
 
