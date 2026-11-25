@@ -100,17 +100,17 @@ fn close_file_handles(log: &slog::Logger, file_handles: &LinkedList<FileHandle>)
 	}
 }
 
-fn delete_existing_version(
+/// Collects the directories and files of an installation to delete, opening each file
+/// exclusively. On an error, the files opened so far are still in `file_handles`.
+fn collect_existing_version(
 	log: &slog::Logger,
 	root_path: &Path,
 	update_folder_name: &str,
+	top_directories: &mut LinkedList<PathBuf>,
+	file_handles: &mut LinkedList<FileHandle>,
 ) -> Result<(), Box<dyn error::Error>> {
 	let mut directories: LinkedList<PathBuf> = LinkedList::new();
-	let mut top_directories: LinkedList<PathBuf> = LinkedList::new();
-	let mut file_handles: LinkedList<FileHandle> = LinkedList::new();
-
-	let root = PathBuf::from(root_path);
-	directories.push_back(root);
+	directories.push_back(PathBuf::from(root_path));
 
 	while let Some(dir) = directories.pop_front() {
 		info!(log, "Reading directory: {:?}", dir);
@@ -173,17 +173,27 @@ fn delete_existing_version(
 					},
 					Some(16),
 				);
-				let file_handle = match file_handle {
-					Ok(file_handle) => file_handle,
-					Err(err) => {
-						close_file_handles(log, &file_handles);
-						return Err(err);
-					}
-				};
+				let file_handle = file_handle?;
 
 				file_handles.push_back(file_handle);
 			}
 		}
+	}
+
+	Ok(())
+}
+
+fn delete_existing_version(
+	log: &slog::Logger,
+	root_path: &Path,
+	update_folder_name: &str,
+) -> Result<(), Box<dyn error::Error>> {
+	let mut top_directories: LinkedList<PathBuf> = LinkedList::new();
+	let mut file_handles: LinkedList<FileHandle> = LinkedList::new();
+
+	if let Err(err) = collect_existing_version(log, root_path, update_folder_name, &mut top_directories, &mut file_handles) {
+		close_file_handles(log, &file_handles);
+		return Err(err);
 	}
 
 	info!(log, "Collected all directories and file handles");
