@@ -40,6 +40,15 @@ impl FileHandle {
 	}
 
 	pub fn mark_for_deletion(&self) -> Result<(), Box<dyn error::Error>> {
+		self.set_delete_disposition(true)
+	}
+
+	/// Keeps a file that was marked for deletion when its handle closes.
+	pub fn unmark_for_deletion(&self) -> Result<(), Box<dyn error::Error>> {
+		self.set_delete_disposition(false)
+	}
+
+	fn set_delete_disposition(&self, delete: bool) -> Result<(), Box<dyn error::Error>> {
 		use std::mem;
 		use windows_sys::Win32::Foundation::BOOLEAN;
 		use windows_sys::Win32::Storage::FileSystem::{
@@ -48,7 +57,7 @@ impl FileHandle {
 
 		unsafe {
 			let mut info = FILE_DISPOSITION_INFO {
-				DeleteFile: 1 as BOOLEAN,
+				DeleteFile: delete as BOOLEAN,
 			};
 			let result = SetFileInformationByHandle(
 				self.0,
@@ -62,7 +71,7 @@ impl FileHandle {
 				return Err(io::Error::new(
 					io::ErrorKind::Other,
 					format!(
-						"Failed to mark file for deletion: {}",
+						"Failed to set whether to delete a file: {}",
 						util::get_last_error_message()?
 					),
 				)
@@ -77,7 +86,8 @@ impl FileHandle {
 		use windows_sys::Win32::Foundation::CloseHandle;
 
 		unsafe {
-			if CloseHandle(self.0).is_negative() {
+			// CloseHandle returns zero on failure
+			if CloseHandle(self.0) == 0 {
 				return Err(io::Error::new(
 					io::ErrorKind::Other,
 					format!(
