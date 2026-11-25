@@ -175,7 +175,7 @@ fn delete_existing_version(
 	// deleted when their handles close, as they do when the updater exits, so that nothing is marked
 	// while the updater asks whether to try again, and a failed update leaves the installation as
 	// it was
-	util::retry(
+	let marked = util::retry(
 		"marking a file for deletion",
 		|_| -> Result<(), Box<dyn error::Error>> {
 			for (index, file_handle) in file_handles.iter().enumerate() {
@@ -191,7 +191,17 @@ fn delete_existing_version(
 			Ok(())
 		},
 		None,
-	)?;
+	);
+	if let Err(err) = marked {
+		// Release the files, which nothing is marked in, so that the installation can start while
+		// the updater reports the error
+		for file_handle in &file_handles {
+			if let Err(close_err) = file_handle.close() {
+				warn!(log, "Failed to close a file handle: {}", close_err);
+			}
+		}
+		return Err(err);
+	}
 
 	info!(log, "All file handles marked for deletion");
 
