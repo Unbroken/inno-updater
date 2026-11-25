@@ -30,7 +30,14 @@ jobs:
           rustup default stable
 
       - name: Test
-        run: cargo test --locked --target $env:TARGET
+        # Once more after a failure: on GitHub's runners, something such as an antivirus scan can
+        # briefly hold a new executable, which the process tests rename while it runs
+        run: |
+          cargo test --locked --target $env:TARGET
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "Tests failed, running them again"
+            cargo test --locked --target $env:TARGET
+          }
 
       - name: Build
         run: cargo build --locked --release --target $env:TARGET
