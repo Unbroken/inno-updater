@@ -90,6 +90,16 @@ fn write_file(
 	Ok(())
 }
 
+/// Releases the installation's files when an update fails before any of them is marked for
+/// deletion, so that the installation can start while the updater reports the error.
+fn close_file_handles(log: &slog::Logger, file_handles: &LinkedList<FileHandle>) {
+	for file_handle in file_handles {
+		if let Err(err) = file_handle.close() {
+			warn!(log, "Failed to close a file handle: {}", err);
+		}
+	}
+}
+
 fn delete_existing_version(
 	log: &slog::Logger,
 	root_path: &Path,
@@ -162,7 +172,14 @@ fn delete_existing_version(
 						FileHandle::new(&entry_path)
 					},
 					Some(16),
-				)?;
+				);
+				let file_handle = match file_handle {
+					Ok(file_handle) => file_handle,
+					Err(err) => {
+						close_file_handles(log, &file_handles);
+						return Err(err);
+					}
+				};
 
 				file_handles.push_back(file_handle);
 			}
@@ -193,13 +210,7 @@ fn delete_existing_version(
 		None,
 	);
 	if let Err(err) = marked {
-		// Release the files, which nothing is marked in, so that the installation can start while
-		// the updater reports the error
-		for file_handle in &file_handles {
-			if let Err(close_err) = file_handle.close() {
-				warn!(log, "Failed to close a file handle: {}", close_err);
-			}
-		}
+		close_file_handles(log, &file_handles);
 		return Err(err);
 	}
 
