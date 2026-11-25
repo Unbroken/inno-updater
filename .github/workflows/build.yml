@@ -75,5 +75,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "inno_updater.exe built from $GITHUB_SHA." \
+          # Only for the commit that was built, if the tag hasn't been moved or deleted since
+          tagged=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          if [ "$tagged" != "$GITHUB_SHA" ]; then
+            echo "$TAG is at $tagged, not the built commit $GITHUB_SHA" >&2
+            exit 1
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes "inno_updater.exe built from $GITHUB_SHA." \
             release/dist/inno_updater.exe release/dist/inno_updater.exe.sha256 release/inno_updater.zip release/inno_updater.zip.sha256
