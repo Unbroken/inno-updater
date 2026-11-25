@@ -57,7 +57,8 @@ impl FileHandle {
 				mem::size_of::<FILE_DISPOSITION_INFO>() as u32,
 			);
 
-			if result.is_negative() {
+			// SetFileInformationByHandle returns zero on failure
+			if result == 0 {
 				return Err(io::Error::new(
 					io::ErrorKind::Other,
 					format!(
