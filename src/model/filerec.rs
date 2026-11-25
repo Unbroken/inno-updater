@@ -307,6 +307,9 @@ impl FileRec {
 					// strip prefix
 					.strip_prefix(from)
 					.map_err(|_| RebaseError)
+					// not the update folder itself, such as the installer's rule that removes it on
+					// uninstall, which would otherwise remove the whole installation
+					.and_then(|p| if p.as_os_str().is_empty() { Err(RebaseError) } else { Ok(p) })
 					// join with new path
 					.and_then(|p| Ok(PathBuf::from(to).join(p)))
 					// convert to string
@@ -387,6 +390,7 @@ mod tests {
 			String::from("C:\\Code\\foo.txt"),
 			String::from("C:\\Code\\_\\bar.txt"),
 			String::from("C:\\Code\\_\\foo\\bar.txt"),
+			String::from("C:\\Code\\_"),
 		];
 
 		let data = encode_strings(&strings).unwrap();
@@ -400,6 +404,7 @@ mod tests {
 			"C:\\Code\\foo.txt",
 			"C:\\Code\\bar.txt",
 			"C:\\Code\\foo\\bar.txt",
+			"C:\\Code\\_",
 		];
 
 		let rebased = record.rebase(Path::new("C:\\Code\\_")).unwrap();
